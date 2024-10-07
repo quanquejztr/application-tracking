@@ -1,6 +1,7 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
 RawEmails.json
+credentials.json
 *.py[cod]
 *$py.class
 token.json
