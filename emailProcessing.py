@@ -40,11 +40,19 @@ def emailProcessing(emails):
         for s_sender in sender["payload"]["headers"]:
             if "From" in s_sender["name"]:
                 if "data" in sender["payload"]["body"]:
+                    headers = sender.get('payload', {}).get('headers', [])
+                    for header in headers:
+                        if header.get('name', '').lower() == 'subject':
+                            title = header.get('value', 'No title found')
                     decoder = base64.urlsafe_b64decode(sender["payload"]["body"]["data"].encode("ASCII")).decode("utf-8")
-                    senders[s_sender["value"]].append((sender["id"], sender["labelIds"], decoder, sender["internalDate"]))
+                    senders[s_sender["value"]].append((sender["id"], sender["labelIds"], title, decoder, sender["internalDate"]))
                 elif "data" in sender["payload"]["parts"][0]["body"]:
+                        headers = sender.get('payload', {}).get('headers', [])
+                        for header in headers:
+                            if header.get('name', '').lower() == 'subject':
+                                title = header.get('value', 'No title found')
                         decoder = base64.urlsafe_b64decode(sender["payload"]["parts"][0]["body"]["data"].encode("ASCII")).decode("utf-8")
-                        senders[s_sender["value"]].append((sender["id"], sender["labelIds"], decoder, sender["internalDate"]))
+                        senders[s_sender["value"]].append((sender["id"], sender["labelIds"], title, decoder, sender["internalDate"]))
     
     return senders
 
@@ -53,7 +61,7 @@ def clean_text(message):
     Take a string and remove all non-ASCII characters and replace them with empty string.
     """
     
-    return re.sub(r'[\u200b\u200c\u200d\u200e\u200f\ufeff\n\r\xa0\ud83d\ude80\u202f\u2019\u2014\u2605\u2022\u2023\u2024\u034f]', '', BeautifulSoup(message, "lxml").text)
+    return re.sub(r'[\u200b\u200c\u200d\u200e\u200f\ufeff\n\r\xa0\ud83d\ude80\u202f\u2019\u2014\u2605\u2022\u2023\u2024\u034f\u2007\u00ad]', '', BeautifulSoup(message, "lxml").text)
 
 def application_categorizer(content):
     """
@@ -66,15 +74,13 @@ def application_categorizer(content):
     non_application = defaultdict(list)
     combine_list = defaultdict(list)
     for company, email_data in content.items():
-        for mailId, mailCategories, mailContent, mailTime in email_data:
+        for mailId, mailCategories, mailSubject, mailContent, mailTime in email_data:
+            newMailContent = clean_text(mailContent)
+            newMailTime = datetime.datetime.fromtimestamp(int(mailTime)/1e3)
             if "CATEGORY_PERSONAL" in mailCategories or "CATEGORY_UPDATES" in mailCategories or "IMPORTANT" in mailCategories or company == 'Stephen Luong <stephenluong24@gmail.com>':
-                newMailContent = clean_text(mailContent)     
-                newMailTime = datetime.datetime.fromtimestamp(int(mailTime)/1e3)
-                application[company].append([mailId, mailCategories, newMailContent, str(newMailTime)])
+                application[company].append([mailId, mailCategories, mailSubject, newMailContent, str(newMailTime)])
             else:
-                newMailContent = clean_text(mailContent)
-                newMailTime = datetime.datetime.fromtimestamp(int(mailTime)/1e3)
-                non_application[company].append([mailId, mailCategories, newMailContent, str(newMailTime)])
+                non_application[company].append([mailId, mailCategories, mailSubject, newMailContent, str(newMailTime)])
 
     #Move unnecessary emails from application focused list non-application list
     temp_list_app = [company for company in application.keys()]
@@ -91,7 +97,7 @@ def application_categorizer(content):
 if __name__ == "__main__":
     combine_list = application_categorizer(emailProcessing(data))
     
-    with open('categorizer.json', 'w') as f:
+    with open('categorizer3.json', 'w') as f:
         json.dump(combine_list, f, indent=4)
     
     print(f'Data saved to categorizer.json')
