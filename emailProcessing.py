@@ -5,6 +5,11 @@ import re
 import datetime
 from collections import defaultdict
 from bs4 import BeautifulSoup
+from transformers import pipeline
+from collections import defaultdict
+from subprocess import list2cmdline
+import spacy
+from spacy.matcher import Matcher
 
 """
 This code snippet is a Python script that processes raw emails. It imports various modules and defines three functions: `emailProcessing`, `clean_text`, and `application_categorizer`.
@@ -39,20 +44,16 @@ def emailProcessing(emails):
     for sender in emails:
         for s_sender in sender["payload"]["headers"]:
             if "From" in s_sender["name"]:
+                headers = sender.get('payload', {}).get('headers', [])
+                for header in headers:
+                    if header.get('name', '').lower() == 'subject':
+                        title = header.get('value', 'No title found')
                 if "data" in sender["payload"]["body"]:
-                    headers = sender.get('payload', {}).get('headers', [])
-                    for header in headers:
-                        if header.get('name', '').lower() == 'subject':
-                            title = header.get('value', 'No title found')
                     decoder = base64.urlsafe_b64decode(sender["payload"]["body"]["data"].encode("ASCII")).decode("utf-8")
                     senders[s_sender["value"]].append((sender["id"], sender["labelIds"], title, decoder, sender["internalDate"]))
                 elif "data" in sender["payload"]["parts"][0]["body"]:
-                        headers = sender.get('payload', {}).get('headers', [])
-                        for header in headers:
-                            if header.get('name', '').lower() == 'subject':
-                                title = header.get('value', 'No title found')
-                        decoder = base64.urlsafe_b64decode(sender["payload"]["parts"][0]["body"]["data"].encode("ASCII")).decode("utf-8")
-                        senders[s_sender["value"]].append((sender["id"], sender["labelIds"], title, decoder, sender["internalDate"]))
+                    decoder = base64.urlsafe_b64decode(sender["payload"]["parts"][0]["body"]["data"].encode("ASCII")).decode("utf-8")
+                    senders[s_sender["value"]].append((sender["id"], sender["labelIds"], title, decoder, sender["internalDate"]))
     
     return senders
 
@@ -62,6 +63,33 @@ def clean_text(message):
     """
     
     return re.sub(r'[\u200b\u200c\u200d\u200e\u200f\ufeff\n\r\xa0\ud83d\ude80\u202f\u2019\u2014\u2605\u2022\u2023\u2024\u034f\u2007\u00ad]', '', BeautifulSoup(message, "lxml").text)
+
+import datetime
+
+from transformers import pipeline
+from collections import defaultdict
+from subprocess import list2cmdline
+import spacy
+from spacy.matcher import Matcher
+
+nlp = spacy.load('en_core_web_lg')
+model_checkpoint = "xlm-roberta-large-finetuned-conll03-english"
+token_classifier = pipeline(
+    "token-classification", model=model_checkpoint, aggregation_strategy="simple"
+)
+
+def Org_classifier(extracted_text):
+    # Extract the complete text in the resume
+    classifier = token_classifier(extracted_text)
+    entity_name = None
+    max_score = 0
+    for s in classifier:
+        if s['entity_group'] == 'ORG':
+            if s['score'] > max_score:
+                entity_name = s['word']
+                max_score = s['score']
+    return entity_name
+
 
 def application_categorizer(content):
     """
@@ -76,12 +104,14 @@ def application_categorizer(content):
     for company, email_data in content.items():
         for mailId, mailCategories, mailSubject, mailContent, mailTime in email_data:
             newMailContent = clean_text(mailContent)
+            mailCorporationName = Org_classifier(newMailContent)
             newMailTime = datetime.datetime.fromtimestamp(int(mailTime)/1e3)
-            if "CATEGORY_PERSONAL" in mailCategories or "CATEGORY_UPDATES" in mailCategories or "IMPORTANT" in mailCategories or company == 'Stephen Luong <stephenluong24@gmail.com>':
-                application[company].append([mailId, mailCategories, mailSubject, newMailContent, str(newMailTime)])
+            if ("CATEGORY_PERSONAL" in mailCategories or "CATEGORY_UPDATES" in mailCategories or "IMPORTANT" in mailCategories or company == 'Stephen Luong <stephenluong24@gmail.com>') and ("great fit" not in mailSubject.lower() or "apply now" not in mailSubject.lower()):
+                application[f'{mailCorporationName} @ {company}'].append([mailId, mailCategories, mailSubject, newMailContent, str(newMailTime)])
             else:
-                non_application[company].append([mailId, mailCategories, mailSubject, newMailContent, str(newMailTime)])
+                non_application[f'{mailCorporationName} @ {company}'].append([mailId, mailCategories, mailSubject, newMailContent, str(newMailTime)])
 
+    
     #Move unnecessary emails from application focused list non-application list
     temp_list_app = [company for company in application.keys()]
     temp_list_non_app = [company for company in non_application.keys()]
