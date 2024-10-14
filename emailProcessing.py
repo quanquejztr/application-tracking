@@ -53,7 +53,7 @@ def clean_text(message):
     Take a string and remove all non-ASCII characters and replace them with empty string.
     """
     
-    return re.sub(r'[\u200b\u200c\u200d\u200e\u200f\ufeff\n\r\xa0\ud83d\ude80\u202f\u2019\u2014\u2605\u2022\u2023\u2024\u034f]', '', BeautifulSoup(message, "lxml").text)
+    return re.sub(r'[\u200b\u200c\u200d\u200e\u200f\ufeff\n\r\xa0\ud83d\ude80\u202f\u2019\u2014\u2605\u2022\u2023\u2024\u034f\u00a9\u00ae\t]', '', BeautifulSoup(message, "lxml").text)
 
 def application_categorizer(content):
     """
