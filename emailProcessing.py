@@ -62,7 +62,7 @@ def clean_text(message):
     Take a string and remove all non-ASCII characters and replace them with empty string.
     """
     
-    return re.sub(r'[\u200b\u200c\u200d\u200e\u200f\ufeff\n\r\xa0\ud83d\ude80\u202f\u2019\u2014\u2605\u2022\u2023\u2024\u034f\u2007\u00ad]', '', BeautifulSoup(message, "lxml").text)
+    return re.sub(r'[\u200b\u200c\u200d\u200e\u200f\ufeff\n\r\xa0\ud83d\ude80\u202f\u2019\u2014\u2605\u2022\u2023\u2024\u034f\u00a9\u00ae\t]', '', BeautifulSoup(message, "lxml").text)
 
 import datetime
 
@@ -103,17 +103,19 @@ def application_categorizer(content):
     combine_list = defaultdict(list)
     for company, email_data in content.items():
         for mailId, mailCategories, mailSubject, mailContent, mailTime in email_data:
-            newMailContent = clean_text(mailContent)
-            mailCorporationName = Org_classifier(newMailContent)
+            newMailContent = clean_text(mailContent)   
             newMailTime = datetime.datetime.fromtimestamp(int(mailTime)/1e3)
-            if ("CATEGORY_PERSONAL" in mailCategories or "CATEGORY_UPDATES" in mailCategories or "IMPORTANT" in mailCategories or company == 'Stephen Luong <stephenluong24@gmail.com>') and ("great fit" not in mailSubject.lower() or "apply now" not in mailSubject.lower()):
-                application[f'{mailCorporationName} @ {company}'].append([mailId, mailCategories, mailSubject, newMailContent, str(newMailTime)])
+            if ("CATEGORY_PERSONAL" in mailCategories or "CATEGORY_UPDATES" in mailCategories or "IMPORTANT" in mailCategories) and ("great fit" not in mailSubject.lower() or 
+                                                                                                        "apply now" not in mailSubject.lower()):
+                if any(keyword in mailSubject.lower() or keyword in newMailContent.lower() for keyword in 
+                       ["application", "applications", "assessment", "assessments", 
+                        "next step", "submission", "submissions", "recruiting"]):
+                    application[company].append([mailId, mailCategories, mailSubject, newMailContent, str(newMailTime)])
             else:
-                non_application[f'{mailCorporationName} @ {company}'].append([mailId, mailCategories, mailSubject, newMailContent, str(newMailTime)])
+                non_application[company].append([mailId, mailCategories, mailSubject, newMailContent, str(newMailTime)])
 
     
-    #Move unnecessary emails from application focused list non-application list
-    temp_list_app = [company for company in application.keys()]
+    #Move unnecessary emails from application list non-application list
     temp_list_non_app = [company for company in non_application.keys()]
     for i in temp_list_non_app:
         if i in application.keys():
@@ -123,6 +125,26 @@ def application_categorizer(content):
     combine_list["non_app_focused"] = non_application
     
     return combine_list
+
+def gimmeAFunctionName(file):
+    app_focused = file['app_focused']
+    
+    the_fix = defaultdict(list)
+    
+    for email, content in app_focused.items():
+        for mailId, mailCategories, mailSubject, mailContent, mailTime in content:
+            mailCorporationName = Org_classifier(mailContent)
+            
+            # If no company name is found, use the original email address
+            if mailCorporationName is None:
+                mailCorporationName = email
+            
+            # Add the email data under the company name
+            the_fix[mailCorporationName].append([mailId, mailCategories, mailSubject, mailContent, mailTime])
+    # Replace the original 'app_focused' content with the merged version
+    file['app_focused'] = the_fix
+    
+    return file
     
 if __name__ == "__main__":
     combine_list = application_categorizer(emailProcessing(data))
